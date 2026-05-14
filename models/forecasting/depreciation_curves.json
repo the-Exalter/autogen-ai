@@ -1,0 +1,101 @@
+{
+  "Toyota_Corolla": {
+    "make": "Toyota",
+    "model": "Corolla",
+    "intercept": 9.691197925367991,
+    "slope": -0.16038011459323384,
+    "r2": 0.9788695269521245,
+    "annual_depreciation_rate": 0.14818006176941367,
+    "estimated_new_price_usd": 16174.608666766018,
+    "cohort_points": 20,
+    "total_records": 7260
+  },
+  "Honda_Civic": {
+    "make": "Honda",
+    "model": "Civic",
+    "intercept": 9.703764630326596,
+    "slope": -0.15244342693644095,
+    "r2": 0.9691096767165955,
+    "annual_depreciation_rate": 0.14139253336278867,
+    "estimated_new_price_usd": 16379.15273233552,
+    "cohort_points": 21,
+    "total_records": 7330
+  },
+  "Honda_Accord": {
+    "make": "Honda",
+    "model": "Accord",
+    "intercept": 10.02932973262934,
+    "slope": -0.17307896274492324,
+    "r2": 0.9880856011906544,
+    "annual_depreciation_rate": 0.15892880106807716,
+    "estimated_new_price_usd": 22682.063402041276,
+    "cohort_points": 21,
+    "total_records": 8887
+  },
+  "Toyota_Camry": {
+    "make": "Toyota",
+    "model": "Camry",
+    "intercept": 9.87964851353226,
+    "slope": -0.15988318583251868,
+    "r2": 0.9891755791792284,
+    "annual_depreciation_rate": 0.1477566627522946,
+    "estimated_new_price_usd": 19528.857326519214,
+    "cohort_points": 21,
+    "total_records": 12385
+  },
+  "Ford_F-150": {
+    "make": "Ford",
+    "model": "F-150",
+    "intercept": 10.593216873564545,
+    "slope": -0.19300736858738618,
+    "r2": 0.9743395547963619,
+    "annual_depreciation_rate": 0.1755241011059836,
+    "estimated_new_price_usd": 39863.518988064185,
+    "cohort_points": 20,
+    "total_records": 14438
+  },
+  "Honda_CR-V": {
+    "make": "Honda",
+    "model": "CR-V",
+    "intercept": 10.232744008121779,
+    "slope": -0.17020588636138093,
+    "r2": 0.9854803717080836,
+    "annual_depreciation_rate": 0.15650886460302182,
+    "estimated_new_price_usd": 27798.685325803548,
+    "cohort_points": 19,
+    "total_records": 3262
+  },
+  "Toyota_RAV4": {
+    "make": "Toyota",
+    "model": "RAV4",
+    "intercept": 10.060552273685,
+    "slope": -0.14357514791520246,
+    "r2": 0.9845660557113237,
+    "annual_depreciation_rate": 0.13374429956869982,
+    "estimated_new_price_usd": 23401.426796234548,
+    "cohort_points": 14,
+    "total_records": 3209
+  },
+  "Nissan_Altima": {
+    "make": "Nissan",
+    "model": "Altima",
+    "intercept": 9.832423246125526,
+    "slope": -0.1799712778437464,
+    "r2": 0.9770851221805463,
+    "annual_depreciation_rate": 0.16470579748266534,
+    "estimated_new_price_usd": 18628.03990165198,
+    "cohort_points": 20,
+    "total_records": 19228
+  },
+  "Ford_Escape": {
+    "make": "Ford",
+    "model": "Escape",
+    "intercept": 10.023647605799534,
+    "slope": -0.19664192484829984,
+    "r2": 0.9877406041525817,
+    "annual_depreciation_rate": 0.1785152660748256,
+    "estimated_new_price_usd": 22553.54651144582,
+    "cohort_points": 15,
+    "total_records": 11862
+  }
+}

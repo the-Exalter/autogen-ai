@@ -1,0 +1,33 @@
+{
+  "trained_at": "2026-05-14T05:48:51.333663",
+  "dataset_rows": 551482,
+  "models_trained": [
+    "Toyota_Corolla",
+    "Honda_Civic",
+    "Honda_Accord",
+    "Toyota_Camry",
+    "Ford_F-150",
+    "Honda_CR-V",
+    "Toyota_RAV4",
+    "Nissan_Altima",
+    "Ford_Escape"
+  ],
+  "xgboost": {
+    "mae": 969.0958658854166,
+    "mape": 7.387289097482343
+  },
+  "qrf": {
+    "mae": 1077.0833333333333,
+    "mape": 7.668129317255441
+  },
+  "feature_names": [
+    "median_age",
+    "median_age_sq",
+    "month_index",
+    "listing_count",
+    "rolling_3m_price",
+    "price_change_pct",
+    "depreciation_slope",
+    "median_odometer"
+  ]
+}
