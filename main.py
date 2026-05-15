@@ -803,124 +803,102 @@ class UsedMarketRequest(BaseModel):
 
 @app.post("/find-used-listings")
 async def find_used_listings(req: UsedMarketRequest):
-    """
-    Scrape Cars.com for real used listings of the requested vehicle.
-    Returns up to 6 structured listings.
-    """
     api_key = os.environ.get("FIRECRAWL_API_KEY", "")
     if not api_key:
-        return {"found": False, "listings": [], "error": "Firecrawl not configured"}
+        return {"found": False, "listings": [],
+                "error": "Firecrawl not configured"}
 
-    make_slug = req.make.lower().replace(" ", "-")
-    model_slug = f"{make_slug}-{req.model.lower().replace(' ', '-')}"
+    vehicle_name = f"{req.make} {req.model}"
+    if req.year:
+        vehicle_name = f"{req.year} {vehicle_name}"
 
-    base_url = (
-        f"https://www.cars.com/shopping/results/"
-        f"?stock_type=used"
-        f"&makes[]={make_slug}"
-        f"&models[]={model_slug}"
-        f"&maximum_distance=all"
-        f"&sort=best_match_desc"
-    )
-
-    urls_to_try = [base_url]
-
-    markdown = ""
-    source_url = ""
+    search_query = f"{vehicle_name} for sale used"
 
     async with httpx.AsyncClient(timeout=30) as client:
-        for url in urls_to_try:
-            try:
-                resp = await client.post(
-                    "https://api.firecrawl.dev/v1/scrape",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={"url": url, "formats": ["markdown"]}
-                )
-                data = resp.json()
-                if data.get("success") and data.get("data", {}).get("markdown"):
-                    markdown = data["data"]["markdown"]
-                    source_url = url
-                    break
-            except Exception as e:
-                print(f"[UsedMarket] Scrape error: {e}")
-                continue
+        try:
+            resp = await client.post(
+                "https://api.firecrawl.dev/v1/search",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "query": search_query,
+                    "limit": 8,
+                    "scrapeOptions": {
+                        "formats": ["markdown"]
+                    }
+                }
+            )
+            data = resp.json()
+            results = data.get("data", [])
+        except Exception as e:
+            print(f"[UsedMarket] Search error: {e}")
+            return {"found": False, "listings": [], "error": str(e)}
 
-    if not markdown:
-        return {"found": False, "listings": [], "source": "cars.com"}
+    if not results:
+        return {"found": False, "listings": []}
 
     listings = []
 
-    title_pattern = re.findall(
-        r'##\s+\[([^\]]+)\]\((https://www\.cars\.com/vehicledetail/[^\)]+)\)',
-        markdown
-    )
+    skip_domains = [
+        'wikipedia.org', 'youtube.com', 'reddit.com',
+        'autoevolution.com', 'motortrend.com', 'caranddriver.com',
+        'topgear.com', 'jalopnik.com', 'carbuzz.com',
+        'edmunds.com', 'kbb.com', 'jdpower.com',
+    ]
 
-    price_pattern = re.findall(r'\$(\d{1,3},\d{3})', markdown)
+    for r in results:
+        if not isinstance(r, dict):
+            continue
 
-    mileage_pattern = re.findall(r'([\d,]+)\s+mi\.', markdown)
+        url = r.get("url", "")
+        title = r.get("title", "")
+        description = r.get("description", "")
 
-    dealer_pattern = re.findall(
-        r'(?:Good Deal|Great Deal|Fair Deal|Certified Pre-Owned|High Demand)\s*\n+([A-Z][^\n]+(?:Toyota|Honda|Ford|Chevrolet|Nissan|Hyundai|Kia|BMW|Mercedes|Dodge|Ram|Jeep|Acura|Lexus|Mazda|Subaru|Volkswagen|Audi|Porsche|Motors|Auto|Cars|Dealer|Group|Center)[^\n]*)',
-        markdown
-    )
+        if any(domain in url for domain in skip_domains):
+            continue
 
-    image_pattern = re.findall(
-        r'https://platform\.cstatic-images\.com/[^\)"\s]+\.jpg',
-        markdown
-    )
+        title_lower = title.lower()
+        if any(word in title_lower for word in [
+            'review', 'test drive', 'history', 'wiki',
+            'how to', 'guide', 'best', 'top 10', 'news'
+        ]):
+            continue
 
-    location_pattern = re.findall(
-        r'([A-Z][a-zA-Z\s]+,\s+[A-Z]{2})\s+\(',
-        markdown
-    )
+        price_match = re.search(
+            r'\$\s*([\d,]+(?:\.\d{2})?)',
+            f"{title} {description}"
+        )
+        price_str = None
+        price_num = None
+        if price_match:
+            price_str = f"${price_match.group(1)}"
+            try:
+                price_num = int(price_match.group(1).replace(",", ""))
+            except Exception:
+                pass
 
-    for i, (title, detail_url) in enumerate(title_pattern[:6]):
-        listing = {
-            "title": title.strip(),
-            "url": detail_url.strip(),
-            "price_usd": None,
-            "mileage_mi": None,
-            "dealer": None,
-            "location": None,
+        domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
+        source = domain_match.group(1) if domain_match else url
+
+        listings.append({
+            "title": title,
+            "url": url,
+            "description": description[:200] if description else None,
+            "price_str": price_str,
+            "price_num": price_num,
+            "source": source,
             "image": None,
-        }
+        })
 
-        if i < len(price_pattern):
-            try:
-                listing["price_usd"] = int(price_pattern[i].replace(",", ""))
-            except Exception:
-                pass
-
-        if i < len(mileage_pattern):
-            try:
-                listing["mileage_mi"] = int(mileage_pattern[i].replace(",", ""))
-            except Exception:
-                pass
-
-        if i < len(dealer_pattern):
-            listing["dealer"] = dealer_pattern[i].strip()
-
-        if i < len(location_pattern):
-            listing["location"] = location_pattern[i].strip()
-
-        img_idx = i * 6
-        if img_idx < len(image_pattern):
-            listing["image"] = image_pattern[img_idx]
-
-        listings.append(listing)
-
-    total_match = re.search(r'([\d,]+\+?)\s+results', markdown)
-    total_count = total_match.group(1) if total_match else f"{len(listings)}+"
+    listings.sort(key=lambda x: (x["price_num"] is None, x["price_num"] or 0))
 
     return {
         "found": len(listings) > 0,
-        "listings": listings,
-        "total_count": total_count,
-        "source": "cars.com",
-        "source_url": source_url,
+        "listings": listings[:6],
+        "total_count": f"{len(listings)}+",
+        "search_query": search_query,
         "make": req.make,
         "model": req.model,
     }
