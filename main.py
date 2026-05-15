@@ -795,6 +795,139 @@ Rules:
     )
 
 
+class UsedMarketRequest(BaseModel):
+    make: str
+    model: str
+    year: Optional[int] = None
+
+
+@app.post("/find-used-listings")
+async def find_used_listings(req: UsedMarketRequest):
+    """
+    Scrape Cars.com for real used listings of the requested vehicle.
+    Returns up to 6 structured listings.
+    """
+    api_key = os.environ.get("FIRECRAWL_API_KEY", "")
+    if not api_key:
+        return {"found": False, "listings": [], "error": "Firecrawl not configured"}
+
+    make_slug = req.make.lower().replace(" ", "-").replace("/", "-")
+    model_slug = req.model.lower().replace(" ", "-").replace("/", "-")
+
+    urls_to_try = []
+    if req.year:
+        urls_to_try.append(
+            f"https://www.cars.com/shopping/results/?stock_type=used"
+            f"&makes[]={make_slug}&models[]={make_slug}-{model_slug}"
+            f"&maximum_distance=all&year_min={req.year}&year_max={req.year}"
+        )
+    urls_to_try.append(
+        f"https://www.cars.com/shopping/results/?stock_type=used"
+        f"&makes[]={make_slug}&models[]={make_slug}-{model_slug}"
+        f"&maximum_distance=all"
+    )
+
+    markdown = ""
+    source_url = ""
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        for url in urls_to_try:
+            try:
+                resp = await client.post(
+                    "https://api.firecrawl.dev/v1/scrape",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={"url": url, "formats": ["markdown"]}
+                )
+                data = resp.json()
+                if data.get("success") and data.get("data", {}).get("markdown"):
+                    markdown = data["data"]["markdown"]
+                    source_url = url
+                    break
+            except Exception as e:
+                print(f"[UsedMarket] Scrape error: {e}")
+                continue
+
+    if not markdown:
+        return {"found": False, "listings": [], "source": "cars.com"}
+
+    listings = []
+
+    title_pattern = re.findall(
+        r'##\s+\[([^\]]+)\]\((https://www\.cars\.com/vehicledetail/[^\)]+)\)',
+        markdown
+    )
+
+    price_pattern = re.findall(r'\$(\d{1,3},\d{3})', markdown)
+
+    mileage_pattern = re.findall(r'([\d,]+)\s+mi\.', markdown)
+
+    dealer_pattern = re.findall(
+        r'(?:Good Deal|Great Deal|Fair Deal|Certified Pre-Owned|High Demand)\s*\n+([A-Z][^\n]+(?:Toyota|Honda|Ford|Chevrolet|Nissan|Hyundai|Kia|BMW|Mercedes|Dodge|Ram|Jeep|Acura|Lexus|Mazda|Subaru|Volkswagen|Audi|Porsche|Motors|Auto|Cars|Dealer|Group|Center)[^\n]*)',
+        markdown
+    )
+
+    image_pattern = re.findall(
+        r'https://platform\.cstatic-images\.com/[^\)"\s]+\.jpg',
+        markdown
+    )
+
+    location_pattern = re.findall(
+        r'([A-Z][a-zA-Z\s]+,\s+[A-Z]{2})\s+\(',
+        markdown
+    )
+
+    for i, (title, detail_url) in enumerate(title_pattern[:6]):
+        listing = {
+            "title": title.strip(),
+            "url": detail_url.strip(),
+            "price_usd": None,
+            "mileage_mi": None,
+            "dealer": None,
+            "location": None,
+            "image": None,
+        }
+
+        if i < len(price_pattern):
+            try:
+                listing["price_usd"] = int(price_pattern[i].replace(",", ""))
+            except Exception:
+                pass
+
+        if i < len(mileage_pattern):
+            try:
+                listing["mileage_mi"] = int(mileage_pattern[i].replace(",", ""))
+            except Exception:
+                pass
+
+        if i < len(dealer_pattern):
+            listing["dealer"] = dealer_pattern[i].strip()
+
+        if i < len(location_pattern):
+            listing["location"] = location_pattern[i].strip()
+
+        img_idx = i * 6
+        if img_idx < len(image_pattern):
+            listing["image"] = image_pattern[img_idx]
+
+        listings.append(listing)
+
+    total_match = re.search(r'([\d,]+\+?)\s+results', markdown)
+    total_count = total_match.group(1) if total_match else f"{len(listings)}+"
+
+    return {
+        "found": len(listings) > 0,
+        "listings": listings,
+        "total_count": total_count,
+        "source": "cars.com",
+        "source_url": source_url,
+        "make": req.make,
+        "model": req.model,
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
