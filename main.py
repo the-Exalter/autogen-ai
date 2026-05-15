@@ -811,21 +811,19 @@ async def find_used_listings(req: UsedMarketRequest):
     if not api_key:
         return {"found": False, "listings": [], "error": "Firecrawl not configured"}
 
-    make_slug = req.make.lower().replace(" ", "-").replace("/", "-")
-    model_slug = req.model.lower().replace(" ", "-").replace("/", "-")
+    make_slug = req.make.lower().replace(" ", "-")
+    model_slug = f"{make_slug}-{req.model.lower().replace(' ', '-')}"
 
-    urls_to_try = []
-    if req.year:
-        urls_to_try.append(
-            f"https://www.cars.com/shopping/results/?stock_type=used"
-            f"&makes[]={make_slug}&models[]={make_slug}-{model_slug}"
-            f"&maximum_distance=all&year_min={req.year}&year_max={req.year}"
-        )
-    urls_to_try.append(
-        f"https://www.cars.com/shopping/results/?stock_type=used"
-        f"&makes[]={make_slug}&models[]={make_slug}-{model_slug}"
+    base_url = (
+        f"https://www.cars.com/shopping/results/"
+        f"?stock_type=used"
+        f"&makes[]={make_slug}"
+        f"&models[]={model_slug}"
         f"&maximum_distance=all"
+        f"&sort=best_match_desc"
     )
+
+    urls_to_try = [base_url]
 
     markdown = ""
     source_url = ""
