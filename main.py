@@ -1,9 +1,14 @@
 import os
 import json
+import re
+import asyncio
 import joblib
 import numpy as np
+import httpx
+import anthropic
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
@@ -12,11 +17,8 @@ from sse_starlette.sse import EventSourceResponse
 from ai_agent import generate_vehicle, detect_availability, stream_vehicle
 from rag_context import get_rag_context
 
-import json
 import pickle
-import numpy as np
 from pathlib import Path
-from pydantic import BaseModel
 from typing import Optional
 
 load_dotenv()
@@ -581,6 +583,216 @@ async def market_health():
         "average_annual_depreciation": round(avg_rate, 4),
         "models_analyzed": len(curves),
     }
+
+
+async def firecrawl_search(query: str, limit: int = 3) -> list:
+    """Search using Firecrawl API and return results."""
+    api_key = os.environ.get("FIRECRAWL_API_KEY", "")
+    if not api_key:
+        return []
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            response = await client.post(
+                "https://api.firecrawl.dev/v1/search",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "query": query,
+                    "limit": limit,
+                    "scrapeOptions": {
+                        "formats": ["markdown"]
+                    }
+                }
+            )
+            data = response.json()
+            return data.get("data", [])
+        except Exception as e:
+            print(f"[Firecrawl] Search error: {e}")
+            return []
+
+
+class ReadMoreRequest(BaseModel):
+    make: str
+    model: str
+    year: Optional[int] = None
+    variant: Optional[str] = None
+
+
+@app.post("/read-more-stream")
+async def read_more_stream(req: ReadMoreRequest):
+    """
+    Stream structured Read More content using SSE.
+    Fetches from YouTube and Reddit via Firecrawl,
+    then Claude structures it into sections.
+    """
+    vehicle_name = f"{req.make} {req.model}"
+    if req.year:
+        vehicle_name = f"{req.year} {vehicle_name}"
+
+    async def generate():
+        try:
+            yield f"event: status\ndata: {json.dumps({'message': f'Researching {vehicle_name}...'})}\n\n"
+
+            youtube_query = f"{req.make} {req.model} site:youtube.com"
+            reddit_query = f"{req.make} {req.model} reddit stories history"
+            general_query = f"{req.make} {req.model} history review"
+
+            youtube_results, reddit_results, general_results = await asyncio.gather(
+                firecrawl_search(youtube_query, 3),
+                firecrawl_search(reddit_query, 3),
+                firecrawl_search(general_query, 2),
+                return_exceptions=True
+            )
+
+            if isinstance(youtube_results, Exception):
+                youtube_results = []
+            if isinstance(reddit_results, Exception):
+                reddit_results = []
+            if isinstance(general_results, Exception):
+                general_results = []
+
+            yield f"event: status\ndata: {json.dumps({'message': 'Synthesizing content...'})}\n\n"
+
+            context_parts = []
+
+            videos = []
+            for r in youtube_results:
+                if isinstance(r, dict):
+                    url = r.get("url", "")
+                    title = r.get("title", "")
+                    description = r.get("description", "")
+                    vid_match = re.search(r'watch\?v=([a-zA-Z0-9_-]{11})', url)
+                    if vid_match:
+                        videos.append({
+                            "id": vid_match.group(1),
+                            "title": title,
+                            "description": description,
+                            "url": url
+                        })
+                    markdown = r.get("markdown", "")
+                    if markdown and len(markdown) > 200:
+                        context_parts.append(
+                            f"=== YouTube: {title} ===\n{markdown[:3000]}"
+                        )
+
+            reddit_items = []
+            for r in reddit_results:
+                if isinstance(r, dict):
+                    url = r.get("url", "")
+                    title = r.get("title", "")
+                    description = r.get("description", "")
+                    markdown = r.get("markdown", "")
+                    reddit_items.append({
+                        "title": title,
+                        "url": url,
+                        "description": description
+                    })
+                    if markdown and len(markdown) > 100:
+                        context_parts.append(
+                            f"=== Reddit: {title} ===\n{description}\n{markdown[:2000]}"
+                        )
+                    else:
+                        context_parts.append(
+                            f"=== Reddit: {title} ===\n{description}"
+                        )
+
+            for r in general_results:
+                if isinstance(r, dict):
+                    title = r.get("title", "")
+                    markdown = r.get("markdown", "")
+                    if markdown and len(markdown) > 200:
+                        context_parts.append(
+                            f"=== Web: {title} ===\n{markdown[:2000]}"
+                        )
+
+            if videos:
+                yield f"event: videos\ndata: {json.dumps({'videos': videos})}\n\n"
+
+            if not context_parts and not videos:
+                yield f"event: error\ndata: {json.dumps({'message': 'No content found for this vehicle'})}\n\n"
+                return
+
+            combined_context = "\n\n".join(context_parts)
+
+            read_more_prompt = f"""You are writing content for the Read More section of a vehicle knowledge platform.
+
+Vehicle: {vehicle_name}
+
+Here is research content gathered from YouTube videos, Reddit discussions, and web sources:
+
+{combined_context}
+
+Structure this into a JSON object with these exact sections.
+Return ONLY raw JSON, no markdown fences:
+
+{{
+  "fast_facts": [
+    {{"label": "string", "value": "string"}}
+  ],
+  "the_story": {{
+    "title": "string",
+    "paragraphs": ["string", "string"]
+  }},
+  "what_owners_say": [
+    {{"quote": "string", "source": "string"}}
+  ],
+  "notable_facts": [
+    "string"
+  ]
+}}
+
+Rules:
+- fast_facts: 3-5 key facts with short label and value (e.g. {{"label": "0-100 km/h", "value": "3.8 seconds"}})
+- the_story: 2-3 short paragraphs about history and significance. NOT boring. Include real stories from the sources.
+- what_owners_say: 2-4 real quotes or paraphrased stories from Reddit or YouTube transcripts. Include source name.
+- notable_facts: 3-5 genuinely interesting facts. Not generic specs. Things like "Only 1,311 were ever made" or "Ferrari CEO Enzo Ferrari called it the best Ferrari ever built"
+- Everything must be specific to this vehicle. No generic car advice.
+- Keep paragraphs SHORT. 2-3 sentences max each.
+- Return ONLY the JSON object."""
+
+            ai_client = anthropic.AsyncAnthropic(
+                api_key=os.environ["ANTHROPIC_API_KEY"]
+            )
+
+            full_text = ""
+            async with ai_client.messages.stream(
+                model="claude-sonnet-4-6",
+                max_tokens=2000,
+                messages=[{
+                    "role": "user",
+                    "content": read_more_prompt
+                }]
+            ) as stream:
+                async for text in stream.text_stream:
+                    full_text += text
+                    yield f"event: delta\ndata: {json.dumps({'text': text})}\n\n"
+
+            try:
+                cleaned = full_text.strip()
+                if cleaned.startswith("```"):
+                    cleaned = re.sub(r'^```[a-z]*\n?', '', cleaned)
+                    cleaned = re.sub(r'\n?```$', '', cleaned)
+
+                structured = json.loads(cleaned)
+                yield f"event: done\ndata: {json.dumps({'content': structured, 'videos': videos, 'reddit': reddit_items})}\n\n"
+            except json.JSONDecodeError as e:
+                yield f"event: error\ndata: {json.dumps({'message': f'Parse error: {str(e)}'})}\n\n"
+
+        except Exception as e:
+            yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 if __name__ == "__main__":
