@@ -260,7 +260,14 @@ async def generate_vehicle_stream_endpoint(req: GenerateVehicleRequest):
         except Exception as e:
             yield {"event": "error", "data": json.dumps({"message": str(e)})}
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(
+        event_generator(),
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        }
+    )
 
 
 @app.post("/predict-price")

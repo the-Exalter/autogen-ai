@@ -24,14 +24,14 @@ Return ONLY this JSON structure:
   "model": "string",
   "year": number,
   "variant": "string (most common or base variant if not specified)",
-  "body_type": "string (Sedan/Hatchback/SUV/Crossover/Pickup/Van/Wagon/Coupe/Convertible/MPV/Roadster/Supercar/Hypercar/Truck/Other)",
-  "fuel_type": "string (Petrol/Diesel/Hybrid/Electric/LPG/CNG/Hydrogen)",
+  "body_type": "string — choose the most accurate from: Sedan/Hatchback/SUV/Crossover/Pickup/Van/Wagon/Coupe/Convertible/MPV/Roadster/Supercar/Hypercar/Truck/Motorcycle/Off-Road — for NON-LAND vehicles use: Commercial Aircraft/Military Aircraft/Business Jet/Light Aircraft/Helicopter/UAV/Drone/Motor Yacht/Sailing Yacht/Superyacht/Container Ship/Naval Vessel/Submarine/Rocket/Spacecraft/Rover/Tank/APC/Agricultural — NEVER use 'Other'",
+  "fuel_type": "string — Petrol/Diesel/Hybrid/Electric/LPG/CNG/Hydrogen/Jet Fuel/AvGas/Nuclear/Solar — use the correct fuel for the vehicle category — aircraft use Jet Fuel or AvGas, rockets use Liquid Hydrogen or RP-1",
   "engine_capacity": "string (e.g. '1800 cc' or '3.0L Twin-Turbo' or 'Dual Motor Electric')",
-  "transmission": "string (Automatic/Manual/CVT/DCT/PDK/Single-Speed)",
+  "transmission": "string — Automatic/Manual/CVT/DCT/PDK/Single-Speed/Fixed-Pitch Propeller/Variable-Pitch Propeller/N/A — use N/A for rockets and spacecraft",
   "color": "string (most iconic or common OEM color for this variant)",
   "assembly": "string (where primarily manufactured, e.g. 'Germany', 'Japan', 'USA', 'Local Assembly')",
-  "typical_price_pkr": number (realistic current used market price in PKR for international reference — use USD converted at current rates if no PKR data exists),
-  "description": "string (2-3 sentences covering what makes this vehicle significant, its market position globally, and its ownership profile)",
+  "typical_price_usd": number (realistic current market value in USD — for rare/exotic vehicles use auction estimates, for aircraft use market listings, for spacecraft use program costs),
+  "description": "string — 2-3 sentences. For aircraft: cover range, speed, typical operators, certification status. For maritime: cover displacement, range, typical use. For spacecraft: cover mission profile, operator. For land vehicles: cover market position, ownership profile, global significance.",
   "features": ["array of notable features specific to this variant and year — be precise, not generic"],
   "known_issues": [
     "array of 3-6 specific, commonly reported owner problems for this exact model and year",
@@ -44,7 +44,7 @@ Return ONLY this JSON structure:
     "timing_belt_km": number (0 if timing chain with no scheduled replacement),
     "major_service_km": number
   },
-  "parts_availability": "string — one of exactly: excellent, good, fair, poor — reflecting global parts availability",
+  "parts_availability": "string — exactly one of: excellent/good/fair/poor — reflecting global availability of parts and servicing for this vehicle",
   "buying_checklist": [
     "array of 3-5 specific inspection points for buying this model used",
     "Reference known failure points, specific components to check, and model-year specific issues",
@@ -58,7 +58,7 @@ Apply your full automotive knowledge across all vehicle categories and markets. 
 
 REQUIRED_FIELDS = [
     "make", "model", "body_type", "fuel_type", "engine_capacity", "transmission",
-    "color", "assembly", "typical_price_pkr", "description", "features",
+    "color", "assembly", "typical_price_usd", "description", "features",
     "known_issues", "maintenance_intervals", "parts_availability",
     "buying_checklist", "market_position",
 ]
